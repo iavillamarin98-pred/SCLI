@@ -1,0 +1,494 @@
+<!-- templates/dashboard/coordinador/horarios.html -->
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="es">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Gestionar horarios (Coordinador) - SGIL</title>
+
+  <!-- Iconos -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"/>
+
+  <!-- Tema global (con rompe-caché + fallback) -->
+  <link rel="stylesheet"
+        th:href="@{/css/admin.css(v=${#dates.createNow().time})}"
+        href="/css/admin.css"/>
+
+  <style>
+    /* ===== Estilos específicos de esta vista (no pisan el tema) ===== */
+    .toolbar{display:flex;gap:12px;align-items:end;flex-wrap:wrap;margin:8px 0 16px}
+    .toolbar .field{display:flex;flex-direction:column;gap:6px}
+    .toolbar select{padding:10px;border:1px solid var(--border-light);border-radius:10px;min-width:220px;background:#fff}
+
+    .grid-wrap{background:#fff;border:1px solid var(--border-light,#e5e7eb);border-radius:14px;padding:14px;box-shadow:var(--shadow)}
+    .horario{width:100%;border-collapse:collapse}
+    .horario th,.horario td{border-bottom:1px solid #eee;padding:10px 8px;text-align:left;vertical-align:top}
+    .horario thead th{background:#F9FAF7;font-weight:600}
+    .slot{min-height:44px;cursor:pointer;border-radius:8px;padding:6px}
+    .slot.vacio{color:#9AA0A6;font-style:italic}
+    .slot.asignado{background:#F1F8E9}
+    .slot.asignado:hover{outline:1px dashed #a3d18b}
+    .slot.ocupado{background:#FFF3E0}
+
+    .pill{display:inline-flex;gap:6px;align-items:center;padding:4px 8px;border-radius:999px;background:#E8F0FE;position:relative;padding-right:26px}
+    .pill .x{
+      position:absolute;right:6px;top:50%;transform:translateY(-50%);
+      width:18px;height:18px;border:none;background:#fff;border-radius:50%;
+      line-height:16px;cursor:pointer;font-weight:700
+    }
+
+    .actions{display:flex;gap:10px;justify-content:flex-end;margin-top:12px}
+    .muted{color:#6b7280}
+    .hint{font-size:.9rem;color:#6b7280;margin-left:6px}
+
+    /* Modal centrado consistente con el tema */
+    .modal{position:fixed;inset:0;display:none;background:rgba(0,0,0,.45);align-items:center;justify-content:center;padding:16px;z-index:1050}
+    .modal.show{display:flex}
+    .dialog{background:#fff;max-width:520px;width:100%;border-radius:14px;padding:18px;box-shadow:0 10px 40px rgba(0,0,0,.25)}
+    .dialog h3{margin:0 0 8px 0}
+    .dialog .row{display:flex;flex-direction:column;gap:6px;margin:8px 0}
+    .dialog select,.dialog input{padding:10px;border:1px solid #ddd;border-radius:10px}
+    .dialog .row.actions{justify-content:flex-end}
+
+    /* Botones modales */
+    .btn.cancel{background:#efefef;color:#111}
+    .btn.cancel:hover{background:#e6e6e6}
+    .btn.danger{background:#dc2626;color:#fff;border-color:#dc2626}
+  </style>
+</head>
+<body>
+
+  <!-- ===== Sidebar (tema) ===== -->
+  <aside class="sidebar" id="sidebar">
+    <div class="logo-section">
+      <div class="logo"><i class="fas fa-clipboard-check"></i></div>
+      <div class="logo-text">Sistema de Control<br/>de Laboratorios</div>
+    </div>
+
+    <nav class="nav-menu">
+      <a class="nav-item" th:href="@{/dashboard/coordinador}"><i class="fas fa-home"></i> Inicio</a>
+      <a class="nav-item active" th:href="@{/coordinador/horarios}"><i class="fas fa-calendar-alt"></i> Gestionar horarios</a>
+      <a class="nav-item" th:href="@{/coordinador/solicitudes}"><i class="fas fa-file-alt"></i> Revisar solicitudes</a>
+    </nav>
+
+    <div class="help-section">
+      <button class="help-btn" type="button"
+              onclick="alert('Asigna Materia/Docente por celda y envía la solicitud para revisión.')">
+        <i class="fas fa-question-circle"></i> Ayuda
+      </button>
+    </div>
+  </aside>
+
+  <!-- ===== Main ===== -->
+  <main class="main-content" id="mainContent">
+    <header class="header">
+      <button class="menu-toggle" id="menuToggle" type="button" aria-label="Abrir/cerrar menú">
+        <i class="fas fa-bars"></i>
+      </button>
+
+      <div class="user-section">
+        <button class="user-info" id="userInfo" type="button" aria-haspopup="true" aria-expanded="false">
+          <div class="user-avatar" id="userAvatar">CO</div>
+          <span id="userName">Coordinador</span>
+          <i class="fas fa-chevron-down"></i>
+        </button>
+        <div class="user-dropdown" id="userDropdown" role="menu" aria-hidden="true">
+          <a class="dropdown-item" role="menuitem" th:href="@{/dashboard/coordinador}"><i class="fas fa-home"></i> Inicio</a>
+          <a class="dropdown-item" role="menuitem" th:href="@{/coordinador/horarios}"><i class="fas fa-calendar-alt"></i> Horarios</a>
+          <a class="dropdown-item" role="menuitem" th:href="@{/coordinador/solicitudes}"><i class="fas fa-file-alt"></i> Solicitudes</a>
+          <a class="dropdown-item logout" id="logoutBtn" role="menuitem" href="#"><i class="fas fa-sign-out-alt"></i> Cerrar sesión</a>
+        </div>
+      </div>
+    </header>
+
+    <section class="dashboard">
+      <h1 class="page-title"><i class="fas fa-calendar-alt"></i> Gestionar horarios de carrera</h1>
+
+      <!-- Toolbar dentro de contenedor del tema -->
+      <div class="announcements-section">
+        <div class="toolbar">
+          <div class="field">
+            <label>Jornada</label>
+            <select id="selJornada">
+              <option value="Matutina">Matutina</option>
+              <option value="Vespertina" selected>Vespertina</option>
+              <option value="Nocturna">Nocturna</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label>Carrera</label>
+            <select id="selCarrera">
+              <option value="">— Seleccione —</option>
+            </select>
+            <span class="hint">Debe estar ligada a <code>carrera.id_persona_coordinador</code></span>
+          </div>
+
+          <div class="field">
+            <label>&nbsp;</label>
+            <button id="btnCargar" class="btn"><i class="fas fa-rotate"></i> Cargar grilla</button>
+          </div>
+
+          <div class="field" style="margin-left:auto">
+            <label>&nbsp;</label>
+            <button id="btnGuardar" class="btn"><i class="fas fa-paper-plane"></i> Guardar solicitud</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Grilla -->
+      <div class="announcements-section" style="padding:16px">
+        <section class="grid-wrap" style="box-shadow:none;border:none;padding:0">
+          <table class="horario" id="tblHorario">
+            <thead>
+              <tr>
+                <th style="width:140px">Hora</th>
+                <th>Lunes</th><th>Martes</th><th>Miércoles</th><th>Jueves</th><th>Viernes</th>
+              </tr>
+            </thead>
+            <tbody id="tbodyHorario">
+              <!-- se llena por JS -->
+            </tbody>
+          </table>
+          <div class="actions">
+            <span class="muted">Haz clic en una celda para asignar <strong>Materia</strong> y opcionalmente <strong>Docente</strong>.</span>
+          </div>
+        </section>
+      </div>
+    </section>
+  </main>
+
+  <!-- ===== Modal Nueva Asignación ===== -->
+  <div class="modal" id="modalAsign">
+    <div class="dialog">
+      <h3>Nueva asignación</h3>
+      <p id="slotInfo" class="muted">—</p>
+
+      <div class="row">
+        <label>Materia</label>
+        <select id="selMateria">
+          <option value="">— Seleccione materia —</option>
+        </select>
+      </div>
+
+      <div class="row">
+        <label>Docente <span class="muted">(opcional)</span></label>
+        <select id="selDocente" disabled>
+          <option value="">— Seleccione docente —</option>
+        </select>
+      </div>
+
+      <div class="row actions" style="gap:8px">
+        <button class="btn cancel" id="btnCancel" type="button">Cancelar</button>
+        <button class="btn danger" id="btnRemove" type="button" style="display:none">
+          <i class="fas fa-trash"></i> Quitar
+        </button>
+        <button class="btn" id="btnOk" type="button"><i class="fas fa-save"></i> Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Sesión a UI ===== -->
+  <script th:inline="javascript">
+    const _nombre = /*[[${session.nombreUsuario}]]*/ null;
+    const _rol    = /*[['' + ${session.rol}]]*/ null;
+    if (_nombre) sessionStorage.setItem('nombreUsuario', _nombre);
+    if (_rol)    sessionStorage.setItem('rol', _rol);
+  </script>
+
+  <!-- ===== Lógica (se mantiene funcionalidad original) ===== -->
+  <script>
+    // ===== Layout común del tema =====
+    const menuToggle   = document.getElementById('menuToggle');
+    const sidebar      = document.getElementById('sidebar');
+    const mainContent  = document.getElementById('mainContent');
+    const userInfo     = document.getElementById('userInfo');
+    const userDropdown = document.getElementById('userDropdown');
+    const userName     = document.getElementById('userName');
+    const userAvatar   = document.getElementById('userAvatar');
+    const logoutBtn    = document.getElementById('logoutBtn');
+
+    const ini = n => (n||'').trim().split(/\s+/).slice(0,2).map(p=>p[0]).join('').toUpperCase() || 'CO';
+
+    menuToggle?.addEventListener('click', ()=>{
+      sidebar.classList.toggle('hidden');
+      mainContent.classList.toggle('expanded');
+    });
+    userInfo?.addEventListener('click', (e)=>{ e.stopPropagation(); userDropdown.classList.toggle('show'); });
+    document.addEventListener('click', (e)=>{ if(!userDropdown.contains(e.target) && !userInfo.contains(e.target)) userDropdown.classList.remove('show'); });
+
+    (function(){
+      const n = sessionStorage.getItem('nombreUsuario') || 'Coordinador';
+      userName.textContent = n; userAvatar.textContent = ini(n);
+    })();
+
+    logoutBtn?.addEventListener('click', async (e)=>{
+      e.preventDefault();
+      try{ await fetch('/logout',{method:'GET',credentials:'include'});}catch(_){}
+      sessionStorage.clear(); location.href='/login';
+    });
+
+    // Autorización mínima
+    (function(){
+      const rol=(sessionStorage.getItem('rol')||'').toLowerCase();
+      if(rol && rol!=='coordinador'){ alert('Acceso no autorizado'); location.href='/login'; }
+    })();
+
+    function handleResize(){
+      if (window.innerWidth <= 768) { sidebar.classList.add('hidden'); mainContent.classList.add('expanded'); }
+      else { sidebar.classList.remove('hidden'); mainContent.classList.remove('expanded'); }
+    }
+    handleResize(); window.addEventListener('resize', handleResize);
+
+    // ======= LÓGICA DE LA PÁGINA =======
+    const API = {
+      materias: '/api/coordinador/materias',                // ?idCarrera=
+      docentesPorMateria: '/api/coordinador/docentes-por-materia', // ?idMateria=
+      crearSolicitud: '/api/coordinador/solicitudes',
+      carreras: '/api/admin/carreras-mias'
+    };
+    const API_HORARIOS = '/api/horarios?jornada='; // debe devolver id_horario, dia_semana, hora_inicio/fin
+
+    let HORARIOS = [];
+    const PENDIENTE = new Map();
+
+    const $ = s => document.querySelector(s);
+    const el = (t,props={}) => Object.assign(document.createElement(t),props);
+    const DAY_KEYS = ['Lunes','Martes','Miércoles','Jueves','Viernes'];
+    const dkey = d => {
+      const s=(d||'').toString().toLowerCase();
+      if (s.startsWith('lun')) return 'Lunes';
+      if (s.startsWith('mar')) return 'Martes';
+      if (s.startsWith('mié')||s.startsWith('mie')) return 'Miércoles';
+      if (s.startsWith('jue')) return 'Jueves';
+      if (s.startsWith('vie')) return 'Viernes';
+      return d;
+    };
+    const horaTxt = (hi,hf)=>`${(hi||'').substring(0,5)}-${(hf||'').substring(0,5)}`;
+
+    // ========= Helpers de render =========
+    function renderVacio(div){
+      div.className = 'slot vacio';
+      div.textContent = 'vacío';
+      div.dataset.label = '';
+    }
+
+    function renderAsignado(div, label){
+      div.className = 'slot asignado';
+      div.dataset.label = label;
+      div.innerHTML = `
+        <span class="pill">
+          <i class="fas fa-book"></i> ${label}
+          <button class="x" title="Quitar" aria-label="Quitar">&times;</button>
+        </span>`;
+      div.querySelector('.x').addEventListener('click', (e)=>{
+        e.stopPropagation(); // no abrir modal
+        const hid = parseInt(div.dataset.hid);
+        PENDIENTE.delete(hid);
+        renderVacio(div);
+      });
+    }
+
+    // ========= Cargas de catálogos =========
+    async function loadCarreras(){
+      const sel = $('#selCarrera');
+      sel.innerHTML = '<option value="">— Seleccione —</option>';
+      try{
+        const r = await fetch(API.carreras);
+        if(!r.ok) throw 0;
+        const data = await r.json();
+        data.forEach(x=>{
+          const id = x.id ?? x.id_carrera;
+          const nom = x.nombre ?? x.nombre_carrera ?? ('Carrera '+id);
+          sel.append(el('option',{value:id,textContent:nom}));
+        });
+      }catch(_){
+        ['7|Ingeniería Software','3|Arquitectura','4|Economía Empresarial'].forEach(s=>{
+          const [v,t]=s.split('|'); sel.append(el('option',{value:v,textContent:`[demo] ${t}`}));
+        });
+      }
+    }
+
+    async function loadMaterias(idCarrera){
+      const sel = $('#selMateria');
+      sel.innerHTML = '<option value="">— Seleccione materia —</option>';
+      $('#selDocente').innerHTML = '<option value="">— Seleccione docente —</option>';
+      $('#selDocente').disabled = true;
+      const url = idCarrera ? `${API.materias}?idCarrera=${idCarrera}` : API.materias;
+      const r = await fetch(url); if(!r.ok) return;
+      const data = await r.json();
+      data.forEach(m=>{
+        const id = m.id ?? m.id_materia;
+        const label = (m.codigo ?? m.cod_materia ?? '') + ' - ' + (m.nombre ?? m.nombre_materia ?? '');
+        sel.append(el('option',{value:id,textContent:label}));
+      });
+    }
+
+    async function loadDocentes(idMateria){
+      const sel = $('#selDocente');
+      sel.innerHTML = '<option value="">— Seleccione docente —</option>';
+      sel.disabled = true;
+      if(!idMateria) return;
+      const r = await fetch(`${API.docentesPorMateria}?idMateria=${idMateria}`);
+      if(!r.ok) return;
+      const data = await r.json();
+      data.forEach(d=>{
+        const id = d.id ?? d.id_docente;
+        const label = d.label ?? (d.nombres_apellidos ?? 'Docente '+id);
+        sel.append(el('option',{value:id,textContent:label}));
+      });
+      sel.disabled = false;
+    }
+
+    async function loadHorarios(jornada){
+      HORARIOS = [];
+      try{
+        const r = await fetch(API_HORARIOS + encodeURIComponent(jornada));
+        if(!r.ok) throw 0;
+        const data = await r.json();
+        HORARIOS = data.map(x=>({
+          id: x.id ?? x.id_horario,
+          dia: dkey(x.diaSemana ?? x.dia_semana ?? x.dia ?? ''),
+          hi: x.horaInicio ?? x.hi ?? x.hora_inicio,
+          hf: x.horaFin ?? x.hf ?? x.hora_fin,
+          jornada: x.jornada
+        }));
+      }catch(_){
+        alert('No se pudo cargar el horario. Ajusta API_HORARIOS a tu endpoint real.');
+      }
+    }
+
+    function renderGrid(){
+      const body = $('#tbodyHorario'); body.innerHTML = '';
+      const rangos = [...new Set(HORARIOS.map(h=>horaTxt(h.hi,h.hf)))].sort();
+      const porClave = new Map(HORARIOS.map(h=>[`${horaTxt(h.hi,h.hf)}|${h.dia}`,h]));
+
+      rangos.forEach(rg=>{
+        const tr = el('tr');
+        tr.append(el('td',{textContent:rg,style:'font-weight:600'}));
+        DAY_KEYS.forEach(d=>{
+          const h = porClave.get(`${rg}|${d}`);
+          const td = el('td');
+          if(!h){
+            td.append(el('div',{className:'slot vacio',textContent:'vacío'}));
+          }else{
+            const div = el('div',{className:'slot vacio',textContent:'vacío'});
+            div.dataset.hid = h.id;
+            div.dataset.label = '';
+            div.addEventListener('click', ()=>openModal(h,div,rg,d));
+            td.append(div);
+
+            // Si ya hay selección en memoria, muéstrala
+            const pre = PENDIENTE.get(h.id);
+            if (pre) renderAsignado(div, pre.label);
+          }
+          tr.append(td);
+        });
+        body.append(tr);
+      });
+    }
+
+    let SLOT_ACT = null, DIV_ACT = null;
+
+    async function openModal(h,div,rg,dia){
+      SLOT_ACT = h; DIV_ACT = div;
+      $('#slotInfo').textContent = `${dia} ${rg}`;
+      $('#modalAsign').classList.add('show');
+
+      await loadMaterias($('#selCarrera').value);
+
+      // ¿Ya había selección para esta celda?
+      const pre = PENDIENTE.get(h.id);
+      const btnRemove = $('#btnRemove');
+
+      if (pre) {
+        $('#selMateria').value = String(pre.idMateria);
+        await loadDocentes(pre.idMateria);
+        if (pre.idDocente) $('#selDocente').value = String(pre.idDocente);
+        btnRemove.style.display = 'inline-block';
+      } else {
+        $('#selMateria').value = '';
+        $('#selDocente').innerHTML = '<option value="">— Seleccione docente —</option>';
+        $('#selDocente').disabled = true;
+        btnRemove.style.display = 'none';
+      }
+    }
+
+    function closeModal(){ $('#modalAsign').classList.remove('show'); SLOT_ACT=null; DIV_ACT=null; }
+    $('#btnCancel').onclick = closeModal;
+    $('#selMateria').onchange = e => loadDocentes(e.target.value);
+
+    // Guardar selección
+    $('#btnOk').onclick = ()=>{
+      const idMateria = parseInt($('#selMateria').value||'');
+      if(!idMateria){ alert('Seleccione materia'); return; }
+      const idDocente = $('#selDocente').value ? parseInt($('#selDocente').value) : null;
+      const labelSel = $('#selMateria').selectedOptions[0].text
+                     + (idDocente? ` (${ $('#selDocente').selectedOptions[0].text })`:'');
+
+      PENDIENTE.set(SLOT_ACT.id,{idMateria,idDocente,label:labelSel});
+      renderAsignado(DIV_ACT,labelSel);
+      closeModal();
+    };
+
+    // Quitar selección (desde el modal)
+    $('#btnRemove').onclick = ()=>{
+      if(!SLOT_ACT || !DIV_ACT) return;
+      PENDIENTE.delete(SLOT_ACT.id);
+      renderVacio(DIV_ACT);
+      closeModal();
+    };
+
+    async function guardarSolicitud(){
+      const idCarrera = $('#selCarrera').value;
+      const jornada   = $('#selJornada').value;
+      if(!idCarrera){ alert('Seleccione la carrera.'); return; }
+      if(PENDIENTE.size===0){ alert('No hay celdas asignadas.'); return; }
+
+      const celdas = [...PENDIENTE.entries()].map(([idHorario,v])=>({
+        idHorario: parseInt(idHorario),
+        idMateria: v.idMateria,
+        idDocente: v.idDocente ?? null
+      }));
+
+      const payload = { idCarrera: parseInt(idCarrera), jornada, observaciones: '', celdas };
+      const r = await fetch(API.crearSolicitud,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+      if(!r.ok){ alert('No se pudo crear la solicitud'); return; }
+      const res = await r.json();
+
+      let conflictos = 0;
+      res.items?.forEach(it=>{
+        if(it.conflictivo){ conflictos++; const div = document.querySelector(`.slot[data-hid="${it.idHorario}"]`); if(div) div.classList.add('ocupado'); }
+      });
+      alert(`Solicitud #${res.idSolicitud} creada.\nConflictos: ${conflictos}`);
+      PENDIENTE.clear();
+    }
+
+    $('#btnCargar').onclick = async ()=>{
+      PENDIENTE.clear();
+      await loadHorarios($('#selJornada').value);
+      renderGrid();
+    };
+    $('#btnGuardar').onclick = guardarSolicitud;
+
+    (async function init(){
+      await loadCarreras();
+      await loadHorarios($('#selJornada').value);
+      renderGrid();
+    })();
+
+    // Cerrar modal al hacer clic fuera
+    $('#modalAsign')?.addEventListener('click', (e)=>{
+      if(e.target.id === 'modalAsign') closeModal();
+    });
+
+    // Atajo: doble click en una celda asignada = limpiar
+    document.getElementById('tbodyHorario').addEventListener('dblclick', (e)=>{
+      const div = e.target.closest('.slot.asignado'); if(!div) return;
+      const hid = parseInt(div.dataset.hid);
+      PENDIENTE.delete(hid);
+      renderVacio(div);
+    });
+  </script>
+</body>
+</html>

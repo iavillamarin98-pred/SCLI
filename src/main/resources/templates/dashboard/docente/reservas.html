@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="es" xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Mis Reservas (Docente)</title>
+
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"/>
+  <link rel="stylesheet" th:href="@{/css/admin.css(v=${#dates.createNow().time})}" href="/css/admin.css"/>
+
+  <style>
+    .toolbar{display:flex;gap:12px;align-items:center;margin:8px 0 18px;flex-wrap:wrap}
+    .hint{font-size:.9rem;color:#6b7280}
+    .table{width:100%;border-collapse:collapse}
+    .table th,.table td{padding:12px 10px;border-bottom:1px solid var(--border-light);text-align:left}
+    .table thead th{background:#F9FAF7;color:#334155;font-weight:600}
+    .actions .btn{margin-right:.4rem}
+    .badge{padding:.15rem .55rem;border-radius:999px;font-size:.8rem}
+    .b-pend{background:#fff3cd;color:#8a6d3b}
+    .b-rev{background:#e8f1ff;color:#1d4ed8}
+    .b-apr{background:#dff0d8;color:#166534}
+    .b-rec{background:#fde2e2;color:#b91c1c}
+    .b-exp{background:#f3f4f6;color:#4b5563}
+
+    dialog{border:none;border-radius:14px;max-width:900px;width:96%;padding:0;box-shadow:0 10px 40px rgba(0,0,0,.25);margin:0;max-height:90vh;overflow:auto}
+    dialog::backdrop{background:rgba(0,0,0,.45)}
+    dialog header{padding:14px 18px;border-bottom:1px solid #eee;font-weight:600}
+    dialog form,dialog .content{padding:16px 18px}
+    dialog footer{display:flex;gap:8px;justify-content:flex-end;padding:12px 18px;border-top:1px solid #eee}
+    dialog input, dialog select{width:100%;padding:10px 12px;border:1px solid #e5e7eb;border-radius:10px}
+
+    /* grilla de horarios */
+    .grid-wrap{overflow:auto;border:1px solid #e5e7eb;border-radius:12px}
+    .sched{border-collapse:separate;border-spacing:0;width:100%}
+    .sched th,.sched td{border-bottom:1px solid #eee;border-right:1px solid #eee;padding:8px;vertical-align:top}
+    .sched thead th{background:#f5f7f9;position:sticky;top:0;z-index:2}
+    .sched th:first-child{background:#fafafa;position:sticky;left:0;z-index:3}
+    .slot{min-width:140px;min-height:64px;border-radius:10px;padding:6px;cursor:pointer}
+    .slot.empty{background:transparent;cursor:default}
+    .slot .t{font-size:.78rem;color:#64748b}
+    .slot .n{font-weight:600}
+    .slot.available{background:#f0fdf4;color:#166534}
+    .slot.available:hover{outline:2px solid #86efac}
+    .slot.selected{outline:3px solid #2563eb !important}
+  </style>
+</head>
+<body>
+  <aside class="sidebar" id="sidebar">
+    <div class="logo-section">
+      <div class="logo"><i class="fas fa-chalkboard-teacher"></i></div>
+      <div class="logo-text">Sistema de Control<br/>de Laboratorios</div>
+    </div>
+    <nav class="nav-menu">
+      <a th:href="@{/dashboard/docente}" class="nav-item"><i class="fas fa-home"></i> Inicio</a>
+      <a th:href="@{/dashboard/docente/reservas}" class="nav-item active"><i class="fas fa-calendar-check"></i> Mis Reservas</a>
+    </nav>
+    <div class="help-section">
+      <button class="help-btn" type="button" onclick="alert('Crea y revisa tus solicitudes temporales de laboratorio. Si Administración te propone un cambio, aquí podrás aceptarlo o rechazarlo.')">
+        <i class="fas fa-question-circle"></i> Ayuda
+      </button>
+    </div>
+  </aside>
+
+  <main class="main-content" id="mainContent">
+    <header class="header">
+      <button class="menu-toggle" id="menuToggle" type="button" aria-label="Abrir/cerrar menú"><i class="fas fa-bars"></i></button>
+      <div class="user-section">
+        <button class="user-info" id="userInfo" type="button" aria-haspopup="true" aria-expanded="false">
+          <div class="user-avatar" id="userAvatar">DO</div>
+          <span id="userName">Docente</span>
+          <i class="fas fa-chevron-down"></i>
+        </button>
+        <div class="user-dropdown" id="userDropdown" role="menu" aria-hidden="true">
+          <a class="dropdown-item" role="menuitem" th:href="@{/dashboard/docente/perfil}"><i class="fas fa-user"></i> Mi perfil</a>
+          <a class="dropdown-item logout" id="logoutBtn" role="menuitem" href="#"><i class="fas fa-sign-out-alt"></i> Cerrar sesión</a>
+        </div>
+      </div>
+    </header>
+
+    <section class="dashboard">
+      <h1 class="page-title"><i class="fas fa-calendar-check"></i> Mis Reservas</h1>
+
+      <div class="announcements-section">
+        <div class="toolbar">
+          <button class="btn" id="btnNueva" type="button"><i class="fas fa-plus"></i> Nueva solicitud</button>
+          <span class="hint">Solicitudes temporales para prácticas o evaluaciones.</span>
+        </div>
+      </div>
+
+      <div class="announcements-section" style="padding:0">
+        <div style="overflow:auto">
+          <table id="tabla" class="table">
+            <thead>
+              <tr>
+                <th>#</th><th>Materia</th><th>Día</th><th>Hora</th><th>Jornada</th><th>Estado</th><th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ===== Modal Nueva solicitud ===== -->
+  <dialog id="dlgNueva">
+    <header>Enviar nueva solicitud</header>
+    <form id="frmNueva" onsubmit="return false">
+      <label>Motivo / Materia
+        <input required name="materia" placeholder="Ej.: Evaluación parcial"/>
+      </label>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">
+        <label>Jornada
+          <select id="selJornadaNew">
+            <option value="Matutina" selected>Matutina</option>
+            <option value="Vespertina">Vespertina</option>
+          </select>
+        </label>
+        <div></div>
+      </div>
+
+      <input type="hidden" name="idHorario" id="idHorarioNewHidden"/>
+      <input type="hidden" name="tipoSolicitud" value="Nueva"/>
+
+      <div class="hint" style="margin-top:8px">Haz clic en un bloque disponible para seleccionar el <b>horario</b>.</div>
+
+      <div class="grid-wrap" style="margin-top:10px">
+        <table class="sched" id="schedTblNew">
+          <thead>
+            <tr><th style="width:110px">Hora</th><th>Lunes</th><th>Martes</th><th>Miércoles</th><th>Jueves</th><th>Viernes</th></tr>
+          </thead>
+          <tbody id="schedBodyNew">
+            <tr><td colspan="6" style="padding:20px;text-align:center">Cargando horarios…</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p class="hint" style="margin-top:8px">Luego de enviar, un Administrador de Piso revisará tu solicitud.</p>
+    </form>
+    <footer>
+      <button type="button" class="btn" onclick="document.getElementById('dlgNueva').close()">Cancelar</button>
+      <button id="btnEnviarNueva" class="btn" disabled><i class="fas fa-paper-plane"></i> Enviar</button>
+    </footer>
+  </dialog>
+
+  <script th:inline="javascript">
+    const _nombre = /*[[${session.nombreUsuario}]]*/ null;
+    const _rol    = /*[['' + ${session.rol}]]*/ null;
+    if (_nombre) sessionStorage.setItem('nombreUsuario', _nombre);
+    if (_rol)    sessionStorage.setItem('rol', _rol);
+  </script>
+
+  <script>
+    // ===== header/sidebar =====
+    const menuToggle=document.getElementById('menuToggle'),sidebar=document.getElementById('sidebar'),mainContent=document.getElementById('mainContent');
+    const userInfo=document.getElementById('userInfo'),userDropdown=document.getElementById('userDropdown'),userName=document.getElementById('userName'),userAvatar=document.getElementById('userAvatar'),logoutBtn=document.getElementById('logoutBtn');
+    const ini=n=>(n||'').trim().split(/\s+/).slice(0,2).map(p=>p[0]).join('').toUpperCase()||'DO';
+    menuToggle?.addEventListener('click',()=>{sidebar.classList.toggle('hidden');mainContent.classList.toggle('expanded');});
+    userInfo?.addEventListener('click',(e)=>{e.stopPropagation();userDropdown.classList.toggle('show');});
+    document.addEventListener('click',(e)=>{if(!userDropdown.contains(e.target)&&!userInfo.contains(e.target))userDropdown.classList.remove('show');});
+    (function(){const n=sessionStorage.getItem('nombreUsuario')||'Docente';userName.textContent=n;userAvatar.textContent=ini(n);})();
+    logoutBtn?.addEventListener('click',async(e)=>{e.preventDefault();try{await fetch('/logout',{method:'GET',credentials:'include'});}catch(_){}sessionStorage.clear();location.href='/login';});
+    (function(){const rol=(sessionStorage.getItem('rol')||'').toLowerCase();if(rol!=='docente'){alert('Acceso no autorizado');location.href='/login';}})();
+
+    // ===== helpers =====
+    const badge=(estado)=>{const e=(estado||'').toLowerCase();
+      if(e==='pendiente')return'<span class="badge b-pend">Pendiente</span>';
+      if(e==='revisión'||e==='revision')return'<span class="badge b-rev">Revisión</span>';
+      if(e==='aprobada')return'<span class="badge b-apr">Aprobada</span>';
+      if(e==='rechazada')return'<span class="badge b-rec">Rechazada</span>';
+      if(e==='expirada')return'<span class="badge b-exp">Expirada</span>';
+      return `<span class="badge">${estado||'-'}</span>`;};
+    const fmtHora=(t)=>t?String(t).substring(0,5):'-';
+    async function getJSON(url){const r=await fetch(`${url}${url.includes('?')?'&':'?'}_=${Date.now()}`,{credentials:'include'});if(!r.ok)throw new Error('HTTP '+r.status);return r.json();}
+
+    // ===== listado =====
+    async function cargar(){
+      const tb=document.querySelector('#tabla tbody');
+      tb.innerHTML='<tr><td colspan="7">Cargando...</td></tr>';
+      try{
+        const data=await getJSON('/api/docentes/solicitudes');
+        if(!Array.isArray(data)||data.length===0){tb.innerHTML='<tr><td colspan="7">No hay solicitudes aún.</td></tr>';return;}
+        tb.innerHTML=data.map((r,i)=>`
+          <tr>
+            <td>${i+1}</td>
+            <td>${r.materia||'-'}</td>
+            <td>${r.diaSemana||'-'}</td>
+            <td>${fmtHora(r.horaInicio)}–${fmtHora(r.horaFin)}</td>
+            <td>${r.jornada||'-'}</td>
+            <td>${badge(r.estado)}</td>
+            <td class="actions">${acciones(r)}</td>
+          </tr>
+        `).join('');
+      }catch(err){tb.innerHTML=`<tr><td colspan="7">Error al cargar: ${err.message}</td></tr>`;}
+    }
+    function acciones(r){
+      const id=r.idSolicitud,e=(r.estado||'').toLowerCase();
+      if(e==='revisión'||e==='revision'){
+        return `
+          <button onclick="aceptar(${id})" class="btn"><i class="fas fa-check"></i> Aceptar propuesta</button>
+          <button onclick="rechazarPropuesta(${id})" class="logout" style="padding:10px 14px;border-radius:12px"><i class="fas fa-times"></i> Rechazar</button>`;
+      }
+      return `<span class="hint">—</span>`;
+    }
+    async function aceptar(id){
+      if(!confirm('¿Aceptar la propuesta del administrador?'))return;
+      const res=await fetch(`/api/docentes/solicitudes/${id}/aceptar-propuesta`,{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include'});
+      if(res.ok){await cargar();}else{alert('No se pudo aceptar.');}
+    }
+    async function rechazarPropuesta(id){
+      if(!confirm('¿Rechazar la propuesta del administrador?'))return;
+      const res=await fetch(`/api/docentes/solicitudes/${id}/rechazar-propuesta`,{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include'});
+      if(res.ok){await cargar();}else{alert('No se pudo rechazar.');}
+    }
+
+    // ===== Nueva solicitud (grilla) =====
+    const dlgNueva   = document.getElementById('dlgNueva');
+    const selJornadaNew=document.getElementById('selJornadaNew');
+    const schedBodyNew=document.getElementById('schedBodyNew');
+    const idHorarioNewHidden=document.getElementById('idHorarioNewHidden');
+    const btnEnviarNueva=document.getElementById('btnEnviarNueva');
+
+    document.getElementById('btnNueva')?.addEventListener('click', ()=>{
+      idHorarioNewHidden.value='';
+      btnEnviarNueva.disabled=true;
+      cargarGrillaNueva(selJornadaNew.value).catch(err=>{
+        schedBodyNew.innerHTML = `<tr><td colspan="6" style="padding:20px;text-align:center">Error: ${err.message}</td></tr>`;
+      });
+      dlgNueva.showModal();
+    });
+
+    selJornadaNew.addEventListener('change', ()=>{
+      idHorarioNewHidden.value='';btnEnviarNueva.disabled=true;
+      cargarGrillaNueva(selJornadaNew.value).catch(()=>{});
+    });
+
+    async function cargarGrillaNueva(jornada){
+      schedBodyNew.innerHTML=`<tr><td colspan="6" style="padding:20px;text-align:center">Cargando horarios…</td></tr>`;
+      const data=await getJSON(`/api/docentes/horarios?jornada=${encodeURIComponent(jornada)}`);
+      if(!Array.isArray(data)||data.length===0){
+        schedBodyNew.innerHTML=`<tr><td colspan="6" style="padding:20px;text-align:center">No hay bloques definidos.</td></tr>`;return;
+      }
+      // horaInicio/horaFin deben venir como strings "HH:mm"
+      const H=s=>String(s||'').slice(0,5),dias=['Lunes','Martes','Miércoles','Jueves','Viernes'];
+      const horas=[...new Set(data.map(h=>H(h.horaInicio)))].sort();
+      const find=(d,h)=>data.find(x=>x.diaSemana===d && H(x.horaInicio)===h);
+
+      schedBodyNew.innerHTML=horas.map(hr=>`
+        <tr>
+          <th>${hr}</th>
+          ${dias.map(d=>{
+            const it=find(d,hr);
+            if(!it) return `<td><div class="slot empty"></div></td>`;
+            return `<td><div class="slot available" data-id="${it.id}">
+                      <div class="n">${d}</div><div class="t">${H(it.horaInicio)}–${H(it.horaFin)}</div>
+                    </div></td>`;
+          }).join('')}
+        </tr>`).join('');
+
+      schedBodyNew.querySelectorAll('.slot.available').forEach(el=>{
+        el.addEventListener('click',()=>{
+          schedBodyNew.querySelectorAll('.slot.selected').forEach(s=>s.classList.remove('selected'));
+          el.classList.add('selected');
+          idHorarioNewHidden.value=el.dataset.id||'';
+          btnEnviarNueva.disabled=!idHorarioNewHidden.value;
+        });
+      });
+    }
+
+    document.getElementById('btnEnviarNueva')?.addEventListener('click', async ()=>{
+      const f=document.getElementById('frmNueva');
+      const payload=Object.fromEntries(new FormData(f).entries());
+      payload.idHorario=Number(payload.idHorario||idHorarioNewHidden.value);
+      if(!payload.idHorario){alert('Selecciona un horario.');return;}
+      try{
+        const res=await fetch('/api/docentes/solicitudes',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify(payload)});
+        if(!res.ok) throw new Error('HTTP '+res.status);
+        dlgNueva.close(); f.reset(); await cargar();
+      }catch(err){alert('Error al enviar: '+err.message);}
+    });
+
+    function handleResize(){if(window.innerWidth<=768){sidebar.classList.add('hidden');mainContent.classList.add('expanded');}else{sidebar.classList.remove('hidden');mainContent.classList.remove('expanded');}}
+    handleResize();window.addEventListener('resize',handleResize);
+    cargar();
+  </script>
+</body>
+</html>
